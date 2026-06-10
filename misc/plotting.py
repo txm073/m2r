@@ -21,7 +21,7 @@ def prod(u: vec2, v: vec2, z: vec2) -> float:
 def length(points: list[vec2]) -> float:
     l = 0
     for i in range(len(points) - 1):
-        l += sqrt(prod(points[i+1] - points[i], points[i+1] - points[i], points[i]))
+        l += np.sqrt(prod(points[i+1] - points[i], points[i+1] - points[i], points[i]))
     return l 
 
 x = np.linspace(-2, 2, 20)
@@ -33,12 +33,13 @@ X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
 F = X**2 + Y**2 + Z**2 - 1 
 
 # Simple torus
-r, R = 1, 3
-F = (R ** 2 - r ** 2 + x ** 2 + y ** 2 + z ** 2) ** 2 - 4 * R ** 2 * (x ** 2 + y ** 2)
+r, R = 1, 2
+# F = (R ** 2 - r ** 2 + x ** 2 + y ** 2 + z ** 2) ** 2 - 4 * R ** 2 * (x ** 2 + y ** 2)
 
-theta_range = np.linspace(0, 2 * np.pi, 25)
-phi_range = np.linspace(0, 2 * np.pi, 25)
+theta_range = np.linspace(0, 2 * np.pi, 40)
+phi_range = np.linspace(0, 2 * np.pi, 40)
 theta, phi = np.meshgrid(theta_range, phi_range)
+r = np.cos(theta) ** 2 + 0.5
 #dF_dtheta, dF_dphi = np.gradient()
 x_param = (R + r * np.cos(phi)) * np.cos(theta)
 y_param = (R + r * np.cos(phi)) * np.sin(theta)
@@ -46,11 +47,15 @@ z_param = r * np.sin(phi)
 
 #dF_dx, dF_dy, dF_dz = np.gradient(F, x, y, z)
 
-fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-ax.set_zlim(-4, 4)
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
-ax.plot_surface(x_param, y_param, z_param, antialiased=False)
+fig, axs = plt.subplots(1, 2, subplot_kw={"projection": "3d"})
+axs[0, 0].set_zlim(-4, 4)
+axs[0, 0].set_xlabel('X')
+axs[0, 0].set_ylabel('Y')
+axs[0, 0].set_zlabel('Z')
+axs[0, 0].plot_surface(x_param, y_param, z_param, antialiased=False)
+axs[0, 1].set_xlabel('X')
+axs[0, 1].set_ylabel('Y')
+axs[0, 1].plot()
+plt.tight_layout()
 plt.show()
 #plt.plot()

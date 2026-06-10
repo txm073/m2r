@@ -64,7 +64,8 @@ class Curve:
     self, 
     iterations: int, 
     step: float,
-    separation: float = None
+    separation: float = None,
+    verbose: bool = False
   ) -> None:
     self.iterations = iterations
     self.step = step
@@ -76,19 +77,25 @@ class Curve:
     self.lengths = [initial_length.detach().item()]
     points = self.points.detach().clone()
     points.requires_grad_(True)
-    for it in range(1, self.iterations + 1):
+    stage = max(self.iterations // 10, 1)
+    for it in range(self.iterations):
+      if verbose and it % stage == 0:
+        print(f'Computing {it}/{self.iterations}...')
       loss = calculate_length(self.G, points, separation=self.separation)
       loss.backward()
       with torch.no_grad():
         self.lengths.append(calculate_length(self.G, points).detach().clone().item())
-        delta = torch.floor(points[0] - self.step * points.grad[0])
+        if points[0][0] >= 1.0 or points[0][1] >= 1.0 or points[0][0] < 0.0 or points[0][1] < 0.0:
+          delta = -self.step * points.grad[0]
+        else:
+          delta = torch.tensor(0.0)
         points -= delta.repeat(len(points), 1)
         points -= self.step * points.grad
         points[-1].copy_(points[0] + torch.tensor(self.homotopy))
       points.grad.zero_()
       self.curves.append(points.detach().clone())
 
-  def plot(
+  def plot2D(
     self, 
     delay: float = 1.0, 
     xlim: tuple[float, float] = None, 
@@ -130,6 +137,50 @@ class Curve:
     )
     plt.show()
   
+  def plot3D(
+    self, 
+    delay: float = 1.0,
+    xlim: tuple[float, float] = None,
+    ylim: tuple[float, float] = None,
+    zlim: tuple[float, float] = None
+  ) -> None:
+    fig, ax = plt.subplots()
+    if xlim is None:
+      xlim = (-abs(self.homotopy[0] * 1.5), abs(self.homotopy[0] * 1.5))
+    if ylim is None:
+      ylim = (-abs(self.homotopy[1] * 1.5), abs(self.homotopy[1] * 1.5))
+    if zlim is None:
+      zlim = (-abs())
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    line, *_ = ax.plot([], [], marker='o', color='red')
+    text = ax.text(
+      0.02, 0.95, '',
+      transform=ax.transAxes,
+      va='top',
+      color='red'
+    )
+    det = lambda x, y: self.G[0][0](x, y) * self.G[1][1](x, y) - self.G[0][1](x, y) ** 2
+    im = ax.imshow(
+      det(*torch.meshgrid(torch.linspace(*xlim, 100), torch.linspace(*ylim, 100), indexing='xy')),
+      extent=[xlim[0], xlim[1], ylim[0], ylim[1]],
+      origin='lower',
+      cmap='viridis'
+    )
+    fig.colorbar(im, ax=ax)
+    def update(frame_index: int) -> list:
+      line.set_data(*zip(*self.curves[frame_index]))
+      text.set_text(f'{frame_index+1}/{self.iterations}: length={self.lengths[frame_index]:.6f}')
+      return line, text  
+    anim = FuncAnimation(
+      fig, 
+      update, 
+      frames=range(self.iterations), 
+      interval=delay * 1000, 
+      repeat=False,
+      blit=True
+    )
+    plt.show()
 
 def input_function(prompt: str) -> ScalarFunc:
   s = input(prompt).replace(' ', '').lower()
@@ -140,15 +191,17 @@ def const(v: float) -> ScalarFunc:
   return lambda x, y: torch.full_like(x, v)
 
 def example() -> tuple[int, tuple[int, int], Metric]:
-  N = 10
+  N = 15
   cls = (2, 3)
   f = lambda x, y: torch.cos(x) ** 2 + torch.sin(y) ** 2 + 1.0
+  # f = const(1.0)
   zero = const(0.0)
   G = [[f, zero], [zero, f]]
+  it = 1000
   curve = Curve(N, cls, G)
-  curve.initialise(start=(0.0, 0.0))
-  curve.minimise(500, 0.01, separation=100)
-  curve.plot(0.01, xlim=(-1, 5), ylim=(-1, 5))
+  curve.initialise(start=(0.0, 0.0), init_mode='linear')
+  curve.minimise(it, 0.005, separation=100, verbose=True)
+  curve.plot(1.0 / float(it), xlim=(-1, 5), ylim=(-1, 5))
 
 def main(argv: list[str]) -> int:
   if len(argv) >= 2 and argv[1] == 'input':
