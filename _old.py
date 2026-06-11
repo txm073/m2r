@@ -95,7 +95,7 @@ class Curve:
       points.grad.zero_()
       self.curves.append(points.detach().clone())
 
-  def plot2D(
+  def plot(
     self, 
     delay: float = 1.0, 
     xlim: tuple[float, float] = None, 
@@ -191,7 +191,7 @@ def const(v: float) -> ScalarFunc:
   return lambda x, y: torch.full_like(x, v)
 
 def example() -> tuple[int, tuple[int, int], Metric]:
-  N = 15
+  N = 10
   cls = (2, 3)
   f = lambda x, y: torch.cos(x) ** 2 + torch.sin(y) ** 2 + 1.0
   # f = const(1.0)
@@ -199,9 +199,11 @@ def example() -> tuple[int, tuple[int, int], Metric]:
   G = [[f, zero], [zero, f]]
   it = 1000
   curve = Curve(N, cls, G)
-  curve.initialise(start=(0.0, 0.0), init_mode='linear')
-  curve.minimise(it, 0.005, separation=100, verbose=True)
-  curve.plot(1.0 / float(it), xlim=(-1, 5), ylim=(-1, 5))
+  curve.initialise(start=(0.0, 0.0), init_mode='random')
+  curve.minimise(it, 0.0005, separation=100, verbose=True)
+
+  # curve.load_points('points.bin')
+  curve.plot(2.0 / float(it), xlim=(-1, 5), ylim=(-1, 5))
 
 def main(argv: list[str]) -> int:
   if len(argv) >= 2 and argv[1] == 'input':
