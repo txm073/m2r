@@ -1,3 +1,4 @@
+import pickle
 from dataclasses import dataclass
 import numpy as np
 from . import *
@@ -30,6 +31,7 @@ class GeodesicSolver:
   N: int
   homotopy: tuple[int, int]
   G: Metric
+  periods: tuple[float, float] = (1.0, 1.0)
 
   def initialise(
     self,
@@ -37,7 +39,7 @@ class GeodesicSolver:
     start: tuple[float, float] = None
   ) -> None:
     if start is None:
-      self.start = torch.rand(2, dtype=torch.float) 
+      self.start = torch.rand(2, dtype=torch.float) * torch.tensor(self.periods)
     else:
       self.start = torch.tensor(start, dtype=torch.float).frac()
     self.end = self.start + torch.tensor(self.homotopy)
@@ -51,12 +53,36 @@ class GeodesicSolver:
       raise Exception('init_mode must be "linear" or "random"')
     self.points.requires_grad_(True)
 
+  def backward(
+    self,
+    points: list[torch.Tensor]
+  ) -> tuple[float, list[torch.Tensor]]:
+    loss = calculate_length(self.G, points, separation=self.separation)
+    loss.backward()
+    with torch.no_grad():
+      length = calculate_length(self.G, points).detach().clone().item()
+      shift = points[0][0] >= self.periods[0] or \
+              points[0][1] >= self.periods[1] or \
+              points[0][0] < 0.0 or \
+              points[0][1] < 0.0
+      if shift:
+        delta = -self.step * points.grad[0]
+      else:
+        delta = torch.tensor(0.0)
+      points -= delta.repeat(len(points), 1)
+      points -= self.step * points.grad
+      points[-1].copy_(points[0] + torch.tensor(self.homotopy))
+    points.grad.zero_()
+    return length, points
+
   def minimise(
     self, 
     iterations: int, 
     step: float,
     separation: float = None,
-    verbose: bool = False
+    verbose: bool = False,
+    store: bool = True,
+    run: bool = True
   ) -> None:
     self.iterations = iterations
     self.step = step
@@ -66,22 +92,30 @@ class GeodesicSolver:
     initial_length = calculate_length(self.G, self.points)
     self.curves = [self.points.detach()]
     self.lengths = [initial_length.detach().item()]
+    if not run:
+      return
     points = self.points.detach().clone()
     points.requires_grad_(True)
     stage = max(self.iterations // 10, 1)
     for it in range(self.iterations):
       if verbose and it % stage == 0:
         print(f'Computing {it}/{self.iterations}...')
-      loss = calculate_length(self.G, points, separation=self.separation)
-      loss.backward()
-      with torch.no_grad():
-        self.lengths.append(calculate_length(self.G, points).detach().clone().item())
-        if points[0][0] >= 1.0 or points[0][1] >= 1.0 or points[0][0] < 0.0 or points[0][1] < 0.0:
-          delta = -self.step * points.grad[0]
-        else:
-          delta = torch.tensor(0.0)
-        points -= delta.repeat(len(points), 1)
-        points -= self.step * points.grad
-        points[-1].copy_(points[0] + torch.tensor(self.homotopy))
-      points.grad.zero_()
-      self.curves.append(points.detach().clone())
+      length, points = self.backward(points)
+      if store:
+        self.curves.append(points.detach().clone())
+        self.lengths.append(length)
+
+  def save(self, path: str) -> None:
+    with open(path, 'wb') as f:
+      data = {
+        'curves': self.curves,
+        'lengths': self.lengths,
+        'seed': torch.initial_seed()
+      }
+      pickle.dump(data, f)
+
+  def load(self, path: str) -> None:
+    with open(path, 'rb') as f:
+      data = pickle.load(f)
+    self.curves = data['curves']
+    self.lengths = data['lengths']

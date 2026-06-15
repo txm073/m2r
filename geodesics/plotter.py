@@ -1,18 +1,28 @@
+import os
 from . import *
 from .solver import GeodesicSolver
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from scipy.interpolate import LinearNDInterpolator
+from scipy.interpolate import RegularGridInterpolator
 
 
 class Plotter:
    
-  def __init__(self, solver: GeodesicSolver) -> None:
+  def __init__(
+    self, 
+    solver: GeodesicSolver, 
+    plot2d: bool = True, 
+    plot3d: bool = False
+  ) -> None:
     self.solver = solver
     self.fig = plt.figure()
-    self.ax2d = self.fig.add_subplot(1, 2, 1)
-    self.ax3d = self.fig.add_subplot(1, 2, 2, projection='3d')  
-    self.plotted_2d, self.plotted_3d = False, False  
+    args = (1, 2, 1) if plot2d and plot3d else (1, 1, 1)
+    self.ax2d = self.fig.add_subplot(*args)
+    args = (1, 2, 2) if plot2d and plot3d else (1, 1, 1)
+    self.ax3d = self.fig.add_subplot(*args, projection='3d')  
+    # self.ax3d.set_visible(False)
+    self.plotted_2d, self.plotted_3d = plot2d, plot3d  
     self.det = lambda x, y: self.solver.G[0][0](x, y) \
       * self.solver.G[1][1](x, y) - self.solver.G[0][1](x, y) ** 2
     self.interp = None
@@ -47,61 +57,41 @@ class Plotter:
 
   def plot_3d(
     self, 
-    xlim: tuple[float, float] = None, 
-    ylim: tuple[float, float] = None,
-    zlim: tuple[float, float] = None
-   ) -> None:
-    self.ax3d.set_title('Surface plot')
-    if xlim is None:
-      xlim = (-abs(self.solver.homotopy[0] * 1.5), abs(self.solver.homotopy[0] * 1.5))
-    if ylim is None:
-      ylim = (-abs(self.solver.homotopy[1] * 1.5), abs(self.solver.homotopy[1] * 1.5))
-    if zlim is None:
-      zlim = (-5, 5)
-    self.ax3d.set_xlim(*xlim)
-    self.ax3d.set_ylim(*ylim)
-    # self.ax3d.set_zlim(*zlim)
-    X, Y = torch.meshgrid(
-      torch.linspace(*xlim, 50),
-      torch.linspace(*ylim, 50),
-      indexing='xy'
-    )
-    Z = self.det(X, Y)
-    self.interp = LinearNDInterpolator(
-      list(zip(X.ravel(), Y.ravel())),
-      Z.ravel()
-    )
-    self.ax3d.plot_surface(X, Y, Z, alpha=0.65)
-    self.line3d, *_ = self.ax3d.plot([], [], [], marker='o', color='red')
-    self.plotted_3d = True
-
-  def plot_surface(
-    self, 
     torus: Torus,
     xlim: tuple[float, float] = None, 
     ylim: tuple[float, float] = None,
     zlim: tuple[float, float] = None
   ) -> None:
-    self.ax3d.set_title('Surface plot')
-    theta, phi = torch.meshgrid(
-      torch.linspace(0, 2 * torch.pi, 50), 
-      torch.linspace(0, 2 * torch.pi, 50),
-      indexing='xy'
-    )
+    self.ax3d.set_title('Torus plot')
+    if xlim is not None:
+      self.ax3d.set_xlim(*xlim)
+    if ylim is not None:
+      self.ax3d.set_ylim(*ylim)
+    if zlim is not None:
+      self.ax3d.set_zlim(*zlim)
+    self.torus = torus
+    theta_ax = torch.linspace(0, 2 * torch.pi, 50)
+    phi_ax = torch.linspace(0, 2 * torch.pi, 50)
+    theta, phi = torch.meshgrid(theta_ax, phi_ax, indexing='xy')
     r = torus.r_torch
     X = (torus.R + r(theta, phi) * torch.cos(phi)) * torch.cos(theta)
     Y = (torus.R + r(theta, phi) * torch.cos(phi)) * torch.sin(theta)
     Z = r(theta, phi) * torch.sin(phi)
-    self.ax3d.plot_surface(X, Y, Z, antialiased=False)
-
+    self.ax3d.plot_surface(X, Y, Z, alpha=0.5, antialiased=False)
+    self.line3d, *_ = self.ax3d.plot([], [], [], marker='o', color='red')
+    self.interp = RegularGridInterpolator((theta_ax, phi_ax), Z)
+    self.plotted_3d = True
+    
   def show(
     self,
-    delay: float = 1.0
+    delay: float = 1.0,
+    save: str = None,
+    frame_save_interval: int = 1
   ) -> None:
     def update(frame_index: int) -> list:
       items = []
-      X, Y = zip(*self.solver.curves[frame_index])
       if self.plotted_2d:
+        X, Y = zip(*self.solver.curves[frame_index])
         self.line2d.set_data(X, Y)
         self.text.set_text(
           f'{frame_index+1}/{self.solver.iterations}: length={self.solver.lengths[frame_index]:.6f}'
@@ -109,22 +99,41 @@ class Plotter:
         items.append(self.line2d)
         items.append(self.text)
       if self.plotted_3d:
-        # print(self.solver.curves[frame_index].shape)
-        # exit(0)
-        assert self.interp is not None
-        Z = self.interp(X, Y)
+        X, Y, Z = self.torus(
+          self.solver.curves[frame_index][:, 0], 
+          self.solver.curves[frame_index][:, 1]
+        )
+        # assert self.interp is not None        
+        # torch.testing.assert_close(X[0], X[-1]) 
+        # torch.testing.assert_close(Y[0], Y[-1]) 
+        # torch.testing.assert_close(Z[0], Z[-1])
+        # assert X[0] == X[-1] and Y[0] == Y[-1] and Z[0] == Z[-1]
+        # Z = self.interp(torch.column_stack((X, Y)))
         self.line3d.set_data(X, Y)
         self.line3d.set_3d_properties(Z)
         items.append(self.line3d)
       return items  
-    anim = FuncAnimation(
-      self.fig, 
-      update, 
-      frames=range(self.solver.iterations), 
-      interval=delay * 1000, 
-      repeat=False,
-      blit=True
-    )
+    if not self.plotted_2d:
+      self.fig.delaxes(self.ax2d)
+    if not self.plotted_3d:
+      self.fig.delaxes(self.ax3d)
     plt.get_current_fig_manager().resize(1600, 900)
     plt.tight_layout()
+    # plt.show(block=False)
+    for i in range(self.solver.iterations):
+      update(i)
+      # self.fig.canvas.draw()
+      self.fig.canvas.draw()
+      if delay != 0:  
+        plt.pause(delay)
+      if save is not None and i % frame_save_interval == 0:
+        if not os.path.exists(save):
+          os.makedirs(save)
+        frame_index = i // frame_save_interval
+        print(f'Saving frame {frame_index} ({i}/{self.solver.iterations})')
+        self.fig.savefig(
+          f'{save}/frame_{frame_index:04d}.png',
+          dpi=200,
+          bbox_inches='tight',
+        )
     plt.show()
