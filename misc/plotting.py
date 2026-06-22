@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from typing import Callable
+from scipy.interpolate import RegularGridInterpolator
 
 @dataclass
 class Metric:

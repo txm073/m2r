@@ -119,3 +119,5 @@ class GeodesicSolver:
       data = pickle.load(f)
     self.curves = data['curves']
     self.lengths = data['lengths']
+    if data.get('seed'):
+      torch.manual_seed(data['seed'])

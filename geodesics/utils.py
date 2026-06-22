@@ -27,3 +27,12 @@ def _make_torch_func(sp_func: sp.Expr) -> ScalarFunc:
 
 def const(value: float) -> ScalarFunc:
   return lambda theta, phi: torch.full_like(theta, value)
+
+def input_function(prompt: str, prefix: str) -> ScalarFunc:
+  s = input(prompt).replace(' ', '').lower()
+  s = re.sub('[A-Za-z_][A-Za-z0-9_]*(?=\\()', lambda m: f'{prefix}.{m.group()}', s)
+  try:
+    v = float(s)
+    return const(v)
+  except ValueError:
+    return eval(f'lambda x, y: {s}')

@@ -50,12 +50,13 @@ def minimise(
       item = params.__dict__()
       item.update({
         # 'points': points.detach().tolist(),
-        'length': length,
+        'min_length': length,
+        'final_length': solver.lengths[-1],
         'required_iterations': idx
       })
       data.append(item)
     except Exception as e:
-      traceback.print_exc(e)
+      traceback.print_exc()
   return data
 
 
@@ -93,8 +94,9 @@ def get_within(
     )
   data = params.__dict__()
   data.update({
-    # 'points': points.detach().tolist(),
-    'length': length,
+    'points': points.detach().tolist(),
+    'min_length': length,
+    'final_length': length,
     'required_iterations': it
   })
   return data

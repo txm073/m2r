@@ -6,26 +6,25 @@ from pprint import pprint
 
 
 if __name__ == '__main__':
-  learning_rates = (0.025, 0.01, 0.005, 0.0025, 0.0001)
+  learning_rates = (0.05, 0.025, 0.01, 0.00001)
   params = Parameters(
     N=10, 
-    lr=learning_rates[-1],
-    its=5000, 
+    lr=None,
+    its=1000,
+    start=(0.2, 0.2),
     init_mode='random',
-    threshold=1e-4,
-    # target=2**0.5,
-    seed=0
+    seed=5
   )
-  # cls = (1, 10)
-  # G = [[const(1.0), const(0.0)], [const(0.0), const(1.0)]]
-
-  homotopy = (1, 2)
+  homotopy = (0, 1)
   R = 3
   r = 1
   G = [
     [lambda x, y: (R + r * torch.cos(2 * torch.pi * x)), const(0.0)],
     [const(0.0), const(r ** 2)]
   ]
-  data = vary_param(homotopy, G, get_within, params, 'lr', learning_rates)
+  data = []
+  for lr in learning_rates:
+    params.lr = lr
+    data.extend(minimise(homotopy, G, [params]))
   for item in data:
     pprint(item)

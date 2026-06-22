@@ -34,11 +34,17 @@ class Plotter:
    ) -> None:
     self.ax2d.set_title('Colour map')
     if xlim is None:
-      xlim = (-abs(self.solver.homotopy[0] * 1.5), abs(self.solver.homotopy[0] * 1.5))
+      xlim = (
+        -(abs(self.solver.homotopy[0]) + 1) * 1.2,
+        (abs(self.solver.homotopy[0]) + 1) * 1.2
+      )
     if ylim is None:
-      ylim = (-abs(self.solver.homotopy[1] * 1.5), abs(self.solver.homotopy[1] * 1.5))
-    self.ax2d.set_xlim(xlim)
-    self.ax2d.set_ylim(ylim)
+      ylim = (
+        -(abs(self.solver.homotopy[1]) + 1) * 1.2,
+        (abs(self.solver.homotopy[1]) + 1) * 1.2
+      )
+    self.ax2d.set_xlim(*xlim)
+    self.ax2d.set_ylim(*ylim)
     self.line2d, *_ = self.ax2d.plot([], [], marker='o', color='red')
     self.text = self.ax2d.text(
       0.02, 0.95, '',
@@ -46,8 +52,17 @@ class Plotter:
       va='top',
       color='red'
     )
+    X, Y = torch.meshgrid(
+      torch.linspace(*xlim, 100), 
+      torch.linspace(*ylim, 100), 
+      indexing='ij'
+    )
+    # print(X, Y)
+    data = self.det(X, Y)
+    print(type(data))
+    print(data.shape)
     im = self.ax2d.imshow(
-      self.det(*torch.meshgrid(torch.linspace(*xlim, 100), torch.linspace(*ylim, 100), indexing='xy')),
+      data,
       extent=[xlim[0], xlim[1], ylim[0], ylim[1]],
       origin='lower',
       cmap='viridis'
@@ -79,7 +94,7 @@ class Plotter:
     Z = r(theta, phi) * torch.sin(phi)
     self.ax3d.plot_surface(X, Y, Z, alpha=0.5, antialiased=False)
     self.line3d, *_ = self.ax3d.plot([], [], [], marker='o', color='red')
-    self.interp = RegularGridInterpolator((theta_ax, phi_ax), Z)
+    self.interp = RegularGridInterpolator((theta_ax, phi_ax), Z, bounds_error=False)
     self.plotted_3d = True
     
   def show(
@@ -101,14 +116,8 @@ class Plotter:
       if self.plotted_3d:
         X, Y, Z = self.torus(
           self.solver.curves[frame_index][:, 0], 
-          self.solver.curves[frame_index][:, 1]
+          self.solver.curves[frame_index][:, 1] 
         )
-        # assert self.interp is not None        
-        # torch.testing.assert_close(X[0], X[-1]) 
-        # torch.testing.assert_close(Y[0], Y[-1]) 
-        # torch.testing.assert_close(Z[0], Z[-1])
-        # assert X[0] == X[-1] and Y[0] == Y[-1] and Z[0] == Z[-1]
-        # Z = self.interp(torch.column_stack((X, Y)))
         self.line3d.set_data(X, Y)
         self.line3d.set_3d_properties(Z)
         items.append(self.line3d)
@@ -120,20 +129,26 @@ class Plotter:
     plt.get_current_fig_manager().resize(1600, 900)
     plt.tight_layout()
     # plt.show(block=False)
-    for i in range(self.solver.iterations):
-      update(i)
-      # self.fig.canvas.draw()
-      self.fig.canvas.draw()
-      if delay != 0:  
-        plt.pause(delay)
-      if save is not None and i % frame_save_interval == 0:
-        if not os.path.exists(save):
-          os.makedirs(save)
-        frame_index = i // frame_save_interval
-        print(f'Saving frame {frame_index} ({i}/{self.solver.iterations})')
-        self.fig.savefig(
-          f'{save}/frame_{frame_index:04d}.png',
-          dpi=200,
-          bbox_inches='tight',
-        )
+    if save is not None:
+      for i in range(self.solver.iterations):
+        update(i)
+        # self.fig.canvas.draw()
+        self.fig.canvas.draw()
+        if delay != 0:  
+          plt.pause(delay)
+        if i % frame_save_interval == 0:
+          if not os.path.exists(save):
+            os.makedirs(save)
+          frame_index = i // frame_save_interval
+          print(f'Saving frame {frame_index} ({i}/{self.solver.iterations})')
+          self.fig.savefig(
+            f'{save}/frame_{frame_index:04d}.png',
+            dpi=200,
+            bbox_inches='tight',
+          )
+    else:
+      anim = FuncAnimation(
+        self.fig, update, frames=range(0, self.solver.iterations),
+        blit=True, interval=delay * 1000, repeat=False
+      )  
     plt.show()
